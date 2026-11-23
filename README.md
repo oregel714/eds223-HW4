@@ -20,5 +20,15 @@ during February 2021.
 ├── texas_blackout.pdf
 └── texas_blackout.qmd
 ```
+### Data Access: 
+**Night Lights:** NASA Worldview
+**VIIRS Data:** NASA Level-1 and Atmospheric Archive & Distribution System Distributed Active Archive Center (LAADS DAAC)
+**Road and House Data:** OpenStreetMap 
+
+### Authors: 
+Mark Oregel
+
+### References and Acknowledgements: 
+[OpenStreetMaps](https://download.geofabrik.de/north-america/us-south.html)
 
 
