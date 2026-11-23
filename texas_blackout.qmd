@@ -91,21 +91,26 @@ masked_feb_16[(masked_feb_16 > 1000) | (masked_feb_16 <= 0)] <- NA
 # Combine to use for light intensity map
 both_days <- c(masked_feb_7, masked_feb_16)
 
-# Calculate difference raster (subtract post-storm from pre-storm)
-diff_raster <- rast(feb_16) - rast(feb_7)
+# Calculate difference raster (subtract pre-storm from post-storm)
+diff_raster <- rast(feb_7) - rast(feb_16)
 
 # Reclassifying diff_raster 
 rcl <- matrix(c(
     -Inf, 200, NA,
-    200, Inf, 1,
+    200, Inf, 1),
     ncol = 3, 
-    byrow = TRUE
-))
+    byrow = TRUE)
 
 # Apply reclassification to raster
 rcl_diff <- classify(diff_raster, rcl = rcl)
 
-# 
+# Vectorize raster differance 
+vectorized_rcl <- st_as_sf(st_as_stars(rcl_diff), merge = TRUE)
+
+# Crop and transform 
+crop_vector <- st_crop(vectorized_rcl, houston_extent) |> 
+    st_transform(crs = 'EPSG:3083')
+
 
 ```
 
@@ -136,6 +141,88 @@ tm_shape(both_days) +
             labels.pos = c('left', 'bottom'),
             n.x = 4, 
             n.y = 4
-        )
+        ) + 
+            tm_title(
+                "Night Light Intensity Pre and Post Storm 2021"
+            )
 
 ```
+
+### Exclude highways from the cropped blackout mask
+```{r}
+# Create buffer around highways 
+buffer_highway <- highway |> 
+    st_union() |> 
+    st_buffer(dist = 200)
+
+# Remove buffer from blackout mask
+non_highway <- st_difference(crop_vector, buffer_highway)
+
+# Find buildings in blackout zones
+build_blackout <- st_intersection(buildings, non_highway)
+
+
+```
+
+### Identify the number of homes likely impacted by the blackouts
+```{r}
+# Find buildings in blackout zones
+build_blackout <- st_intersection(buildings, non_highway)
+
+# Filter 
+blackout_homes <- buildings |> 
+    st_filter(non_highway)
+
+# Number of houses impacted 
+n_houses <- nrow(blackout_homes)
+
+```
+
+The number of houses impacted by the blackout is 157,411. 
+
+### Pre-mapping data wrangling for homes 
+```{r}
+# Convert building polygon to point
+total_homes <- st_centroid(buildings)
+
+# Keep only homes whose osm_id is not in the blackout dataframe
+unaffected_homes <- total_homes[!total_homes$osm_id %in% build_blackout$osm_id, ]
+
+# Convert buildings inside centroid to point
+affected_homes <- st_centroid(build_blackout)
+```
+
+### Map of the homes in Houston that lost power 
+
+```{r}
+# Map 
+tm_basemap("OpenStreetMap") + 
+    tm_shape(highway) + 
+    tm_lines(col = 'darkgoldenrod1', lwd = 0.8) + 
+    tm_shape(unaffected_homes) + 
+    tm_dots(fill = 'cornflowerblue', size = 0.01, fill_alpha = 0.3) + 
+    tm_shape(affected_homes) + 
+    tm_dots(fill = 'red', size = 0.01, fill_alpha = 0.5) + 
+    tm_add_legend(
+        type = 'symbols',
+        labels = c('Impacted', 'Non-impacted'),
+        fill = c('red', 'cornflowerblue'),
+        shape = 21,
+        size = 0.6,
+        title = 'Homes Impacted by Blackouts'
+    ) + 
+        tm_add_legend(
+            type = 'lines',
+            labels = 'Highway',
+            col = 'darkgoldenrod1', 
+            lwd = 0.8
+        ) + 
+        tm_title('Houston Homes Impacted by February Winter Storms 2021') + 
+        tm_scalebar(position = c('right', 'bottom'), text.size = 0.5) + 
+        tm_compass(position = c('right', 'top'))
+
+
+```
+
+### Reflection 
+The winter storm that occurred during February of 2021 caused approximately 157,411 homes to experience a loss of power. Based on this analysis, approximately 33% of the homes, which were quieried for classifying as 'residential', 'apartments', 'house', 'static_caravan', 'detached', experienced a power outage at some point during or after the storm. We selected cells with a decrease greater than 200 nanowatts per square centimeter per steradian to indicate homes that lost power. A limitation of the approaches implemented is the resolution of the raster data. Home data would require finer resolution to produce an accurate picture of homes that were impacted; however, this data likely averaged the values of cells that grouped homes. There are likely more classifications of buildings that were not queried properly and thus not included in the data. 
